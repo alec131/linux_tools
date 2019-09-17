@@ -1,0 +1,181 @@
+- name: test
+  debug:
+    msg: "{{ hostvars[inventory_hostname]['ansible_default_ipv4'] }}"
+
+- name: Remove key file attr
+  shell: |
+      [[ -f "{{ item }}" ]] && chattr -a "{{ item }}" || echo 0
+  with_items: "{{ key_file_list }}"
+
+- name: Set password complexity
+  lineinfile: 
+    path: /etc/pam.d/passwd
+    line: "password required pam_pwquality.so retry=3 dcredit=-1 lcredit=-1 ucredit=-1 minlen=8"
+
+- name: Set login auth
+  lineinfile:
+    path: "{{ item }}"
+    line: "auth required pam_tally2.so deny=5 unlock_time=300"
+    insertafter: "#%PAM-1.0"
+  with_items:
+    - /etc/pam.d/login
+    - /etc/pam.d/su
+    - /etc/pam.d/sshd
+    - /etc/pam.d/remote
+
+- name: Delete unnecessary users
+  user:
+    name: "{{ item }}"
+    state: absent
+  with_items: "{{ del_user_list }}"
+
+- name: Add audit user
+  user: 
+    name: "{{ audit_user }}"
+    password: "{{ item.password | password_hash('sha512') }}"
+    home: /var/log/
+    update_password: on_create
+  when:  hostvars[inventory_hostname]['ansible_default_ipv4']['address'] == item.ip 
+  with_items: "{{ audit_pwd_list }}"
+
+- name: Config audit user for centos6
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^Subsystem'
+    line: 'Subsystem       sftp    internal-sftp'
+  when: ansible_os_family == 'RedHat' and ansible_distribution_major_version == '6'
+
+- name: Config audit user
+  blockinfile:
+    path: /etc/ssh/sshd_config
+    block: |
+      Match User "{{ audit_user }}"
+            ChrootDirectory /var/log
+            ForceCommand    internal-sftp
+  register: set_audit_result
+
+- name: Restart sshd for centos 7
+  systemd:
+    name: sshd
+    state: restarted
+  when: ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7' and set_audit_result.changed != false
+
+- name: Restart sshd for centos6
+  service:
+    name: sshd
+    state: restarted
+  when: ansible_os_family == 'RedHat' and ansible_distribution_major_version == '6' and set_audit_result.changed != false
+
+
+- name: Set rsyslog server
+  blockinfile:
+    path: /etc/rsyslog.conf
+    block: |
+      $ModLoad imudp
+      $UDPServerRun 514
+      $ModLoad imtcp
+      $InputTCPServerRun 514
+
+      $template Message,"/var/log/%FROMHOST-IP%/%$YEAR%-%$MONTH%-%$DAY%/messages"
+      $template Secure,"/var/log/%FROMHOST-IP%/%$YEAR%-%$MONTH%-%$DAY%/secure"
+      $template Maillog,"/var/log/%FROMHOST-IP%/%$YEAR%-%$MONTH%-%$DAY%/maillog"
+      $template Cron,"/var/log/%FROMHOST-IP%/%$YEAR%-%$MONTH%-%$DAY%/cron"
+      $template Spooler,"/var/log/%FROMHOST-IP%/%$YEAR%-%$MONTH%-%$DAY%/spooler"
+      $template Boot,"/var/log/%FROMHOST-IP%/%$YEAR%-%$MONTH%-%$DAY%/boot.log"
+      $template All,"/var/log/%FROMHOST-IP%/%$YEAR%-%$MONTH%-%$DAY%/all"
+
+      *.info;mail.none;authpriv.none;cron.none ?Message
+      authpriv.* ?Secure
+      mail.* ?Maillog
+      cron.* ?Cron
+      uucp,news.crit ?Spooler
+      local7.* ?Boot
+      *.* ?All
+      & ~
+  register: result
+  when: hostvars[inventory_hostname]['ansible_default_ipv4']['address'] == rsyslog_server
+
+- name: Set rsyslog client
+  blockinfile: 
+    path: /etc/rsyslog.conf
+    block: |
+      $FileOwner root
+      $FileGroup {{ audit_user }}
+      $FileCreateMode 0640
+      $DirCreateMode 0755
+      $Umask 0022
+      *.* @@{{ rsyslog_server }}
+    insertafter: "#### GLOBAL DIRECTIVES ####"
+  register: set_rsyslog_result
+  when: hostvars[inventory_hostname]['ansible_default_ipv4']['address'] != rsyslog_server
+
+- name: Set logfile mode
+  shell: |
+    [[ $(find /var/log |grep {{ item }})'x' != 'x' ]] && {
+        chmod 0640 {{ item }}*
+        chown root:{{ audit_user }} {{ item }}*
+    }||echo 0
+  with_items: "{{ audit_log_list }}"
+
+- name: Restart rsyslog.service
+  systemd:
+    name: rsyslog
+    state: restarted
+  when: ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7' and set_rsyslog_result.changed != false
+
+- name: Restart rsyslog.service
+  service:
+    name: rsyslog
+    state: restarted
+  when: ansible_os_family == 'RedHat' and ansible_distribution_major_version == '6' and set_rsyslog_result.changed != false
+
+
+- name: Install epel repo
+  yum:
+    name: epel-release
+    state: present
+
+- name: Install tripwire
+  yum:
+    name: tripwire
+    state: present
+
+- name: Config tripwire
+  shell: |
+      [[ -f /etc/tripwire/site.key || -f /etc/tripwire/localhost.localdomain-local.key ]] || {
+      (echo "{{ tripwire_keys['site'] }}" ; 
+      sleep 1 ;
+      echo "{{ tripwire_keys['site'] }}" ; 
+      sleep 1 ; 
+      echo "{{ tripwire_keys['local'] }}" ; 
+      sleep 1 ;
+      echo "{{ tripwire_keys['local'] }}" ;
+      sleep 1 ; 
+      echo "{{ tripwire_keys['site'] }}" ; 
+      sleep 1 ; 
+      echo "{{ tripwire_keys['site'] }}" ;)|tripwire-setup-keyfiles
+
+      for f in $(cat /etc/tripwire/twpol.txt |awk '{print $1}'|grep '^/')
+      do 
+          [ -e ${f} ] || sed -i "s|\($f\)|#\\1|g" /etc/tripwire/twpol.txt 
+      done
+
+      echo -e "{{ tripwire_keys['site'] }}" | twadmin -m P /etc/tripwire/twpol.txt
+
+      echo -e "{{ tripwire_keys['local'] }}" | tripwire --init
+      }
+
+- name: Install clamav
+  yum:
+    name: clamav
+    state: present
+
+- name: update clam 
+  shell: |
+     freshclam
+
+- name: Add key file attr
+  shell: |
+      [[ -f "{{ item }}" ]] && chattr +a "{{ item }}" || echo 0
+  with_items: "{{ key_file_list }}"
+

@@ -1,0 +1,100 @@
+---
+
+- name: Create Normal User
+  user:
+    name: "{{ normal_user }}"
+    password: "{{ password | password_hash('sha512') }}"
+    update_password: on_create
+
+- name: Install Necessary Soft
+  yum:
+    name: "{{ soft_list }}"
+    state: present
+
+- name: Create shells Dir
+  file:
+    path: /root/shells
+    state: directory
+
+- name: Create time_sync shell
+  copy:
+    src: time_sync.sh
+    dest: /root/shells
+    mode: 0755
+
+- name: Create time_sync cron
+  cron:
+    name: "time_sync"
+    minute: 1
+    hour: 0
+    job: "/bin/bash /root/shells/time_sync.sh"
+
+- name: Config history keys 
+  blockinfile:
+    path: /etc/profile
+    block: |
+      bind '"\x1b\x5b\x41":history-search-backward'
+      bind '"\x1b\x5b\x42":history-search-forward'
+
+- name: Config limits
+  blockinfile:
+    path: /etc/security/limits.conf
+    block: |
+      * soft nofile 65535
+      * hard nofile 65535
+
+      * soft nproc 65535
+      * hard nproc 65535
+
+- name: Close selinux
+  replace:
+    path: /etc/selinux/config
+    regexp: '^SELINUX=enforcing'
+    replace: 'SELINUX=disabled'
+
+- name: Config sshd
+  replace:
+    path: /etc/ssh/sshd_config 
+    regexp: '^#Port 22'
+    replace: 'Port {{ ssh_port }}'
+- replace:
+    path: /etc/ssh/sshd_config
+    regexp: '^#PermitRootLogin yes'
+    replace: 'PermitRootLogin no'
+
+- name: Close ipv6
+  blockinfile:
+    path: /usr/lib/sysctl.d/50-default.conf
+    block: |
+      net.ipv6.conf.all.disable_ipv6 =1
+      net.ipv6.conf.default.disable_ipv6 =1
+
+#- name: Close control-alt-delete for Centos6
+#  replace:
+#    path: /etc/init/control-alt-delete.conf
+#    regexp: '^exec(\s+.*)?$'
+#    replace: '#exec\1'
+#  when: 
+#    - ansible_facts['distribution'] == "CentOS"
+#    - ansible_facts['distribution_major_version'] == "6"
+
+- name: Close control-alt-delete for centos7
+  file:
+    path: /usr/lib/systemd/system/ctrl-alt-del.target
+    state: absent
+  when: 
+    - ansible_facts['distribution'] == "CentOS"
+    - ansible_facts['distribution_major_version'] == "7"
+
+- name: Stop firewalld
+  systemd:
+    name: firewalld
+    state: stopped
+    enabled: no
+
+- name: Install iptables-services
+  yum:
+    name: iptables-services
+    state: present
+
+

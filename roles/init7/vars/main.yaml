@@ -1,0 +1,24 @@
+---
+
+# create user
+normal_user: qk_yunwei
+password: qk365.com
+
+# necessary soft
+soft_list:
+  - gcc
+  - gcc-c++
+  - vim 
+  - unzip
+  - sysstat
+  - lrzsz
+  - man
+  - wget 
+  - openssl
+  - openssl-devel
+  - rsync
+  - ntpdate
+  - net-tools
+
+# ssh port
+ssh_port: 22  

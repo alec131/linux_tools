@@ -1,0 +1,5 @@
+docker_rpm: http://192.168.1.150:8080/sw/k8s/docker-ce-18.03.0.ce-1.el7.centos.x86_64.rpm
+docker_dir: /qingke/docker
+default_net: 172.30.0.1/24
+private_registries: 192.168.1.150
+docker_compose_url: http://192.168.1.150:8080/sw/k8s/docker-compose-Linux-x86_64

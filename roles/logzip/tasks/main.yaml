@@ -1,0 +1,23 @@
+- name: Install lsof
+  yum:
+    name: lsof
+    state: present
+
+- name: Install gzip
+  yum:
+    name: gzip
+    state: present
+
+- name: Pull logzip shell
+  template: 
+    src: logzip.sh.j2
+    dest: /root/shells/logzip.sh
+    mode: 0755
+
+- name: Set crontab
+  cron:
+    name: "a job for logzip"
+    minute: 0
+    hour: 0
+    user: root
+    job: "/root/shells/logzip.sh 2>&1 >/tmp/logzip.log"

@@ -1,0 +1,8 @@
+- name: Change Password
+#  shell: echo '{{ item.password }}' |passwd --stdin '{{ item.user }}'
+  user:
+    name: "{{ item.user }}"
+    password: "{{ item.password | password_hash('sha512') }}"
+    update_password: always
+  when: ansible_eth0.ipv4.address == item.ip 
+  with_items: "{{ pwd_list }}"

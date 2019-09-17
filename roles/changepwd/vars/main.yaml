@@ -1,0 +1,3 @@
+pwd_list:
+  - { ip: "192.168.1.22", user: "root", password: "qk365.com" }
+  - { ip: "192.168.1.22", user: "qktest", password: "i8g3A7ixx8CLyO5wGjKU" }

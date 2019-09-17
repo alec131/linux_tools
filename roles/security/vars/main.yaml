@@ -1,0 +1,39 @@
+---
+rsyslog_server: 192.168.1.151
+audit_user: audit
+audit_pwd_list:
+  - { ip: "192.168.1.22", password: "qk365.com" }
+  - { ip: "192.168.1.151", password: "i8g3A7ixx8CLyO5wGjKU" }
+  - { ip: "172.17.0.105", password: "qk365.com" }
+
+audit_log_list:
+  - /var/log/messages
+  - /var/log/secure
+  - /var/log/maillog
+  - /var/log/cron
+  - /var/log/spooler
+  - /var/log/boot.log
+
+del_user_list: 
+  - sync
+  - halt
+  - news
+  - uucp
+  - operator
+  - games
+  - gopher
+  - smmsp
+  - nfsnobody
+
+key_file_list:
+  - /var/log/messages
+  - /var/log/messages.*
+  - /var/log/audit/audit.log
+  - /var/log/audit/audit.log.*
+  - /etc/shadow
+  - /etc/passwd
+  - /etc/group
+
+tripwire_keys:
+  site: qk365.com
+  local: qk365.com

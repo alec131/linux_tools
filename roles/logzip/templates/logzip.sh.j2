@@ -1,0 +1,14 @@
+#!/bin/bash
+
+echo $(date  +"%Y-%m-%d %H:%M:%S")
+
+for logfile in $(find  /qingke/logs -mindepth 2 -name "*.log" -type f -ctime +1)
+do
+
+        [[ $(lsof -f -- "$logfile")'x' = 'x' ]] || {
+                echo "$logfile is in using,skip gzip."
+                continue
+        }
+        echo "zip $logfile..."  
+        gzip $logfile
+done

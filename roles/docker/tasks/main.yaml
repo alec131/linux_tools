@@ -1,0 +1,43 @@
+- name: Check environment
+  shell: "which docker && echo 'failed' || echo 0"
+  register: result
+
+- name: Exit if have old version
+  fail: 
+    msg: "There is old version docker in it,please uninstall it firstly... "
+  when: result.stdout.find('failed') != -1
+
+- name: Install required packages
+  yum: 
+    name:
+      - yum-utils
+      - device-mapper-persistent-data
+      - lvm2
+    state: present 
+
+- name: Install docker
+  yum:
+    name: "{{ docker_rpm }}"
+    state: present
+
+- name: Create docker config dir
+  file:
+    path: /etc/docker
+    state: directory
+
+- name: Config docker.json
+  template:
+    src: daemon.json.j2
+    dest: /etc/docker/daemon.json
+
+- name: Start docker
+  systemd: 
+    name: docker
+    state: started
+    enabled: yes
+
+- name: Install docker-compose
+  get_url: 
+    url: "{{ docker_compose_url }}"
+    dest: /usr/local/bin/docker-compose
+    mode: 0755
